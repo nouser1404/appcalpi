@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <title>Plan de débit panneaux 2D – optimisation type MaxCut</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- FORMULAIRE -->
+  <div class="card" id="formCard">
+    <h1>Plan de débit panneaux 2D – Optimisation type MaxCut</h1>
+    <p class="muted">
+      Saisis tes pièces de panneaux (longueur × largeur, quantité) et les dimensions de tes panneaux bruts
+      (par ex. 2800 × 2070 mm). L'application calcule un calepinage 2D simplifié pour limiter les chutes,
+      numérote les pièces et génère un schéma par panneau, exportable en PDF.
+    </p>
+
+    <form id="calpinageForm">
+
+      <h2>Pièces de panneaux à découper</h2>
+      <p class="muted">
+        Chaque ligne correspond à une pièce de panneau (montant, côté, étagère, façade, etc.).
+        Les longueurs et largeurs sont en millimètres.
+      </p>
+
+      <div id="piecesContainer">
+        <!-- Ligne de pièce par défaut -->
+        <div class="piece-row">
+          <div class="piece-header">
+            <span class="piece-title">Pièce 1</span>
+            <button type="button" class="piece-remove-btn">Supprimer</button>
+          </div>
+          <div class="grid piece-grid">
+            <div>
+              <label>Nom de la pièce</label>
+              <input type="text" class="piece-name" placeholder="Pièce 1 (ex : Côté armoire)">
+            </div>
+            <div>
+              <label>Longueur (sens principal) <span class="unit">(mm)</span></label>
+              <input type="number" class="piece-length" value="800" min="1" required>
+            </div>
+            <div>
+              <label>Largeur <span class="unit">(mm)</span></label>
+              <input type="number" class="piece-width" value="400" min="1" required>
+            </div>
+            <div>
+              <label>Quantité</label>
+              <input type="number" class="piece-qty" value="2" min="1" required>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="actions">
+        <button type="button" id="addPieceBtn" class="secondary">Ajouter une pièce</button>
+      </div>
+
+      <hr style="margin:1rem 0; border:none; border-top:1px solid #ddd;">
+
+      <h2>Panneaux bruts</h2>
+
+      <div class="grid">
+        <div>
+          <label for="stockLength">Longueur du panneau (sens principal) <span class="unit">(mm)</span></label>
+          <input id="stockLength" type="number" value="2800" min="1" required>
+        </div>
+
+        <div>
+          <label for="stockWidth">Largeur du panneau <span class="unit">(mm)</span></label>
+          <input id="stockWidth" type="number" value="2070" min="1" required>
+        </div>
+
+        <div>
+          <label for="kerf">
+            Trait de scie / jeu entre pièces <span class="unit">(mm)</span>
+          </label>
+          <input id="kerf" type="number" value="3" min="0" required>
+        </div>
+      </div>
+
+      <p class="muted">
+        Hypothèse : les pièces ne sont <strong>pas</strong> tournées (longueur de la pièce alignée sur la longueur du panneau).
+        On pourra ajouter une option "rotation autorisée" plus tard si tu veux.
+      </p>
+
+      <div class="actions">
+        <button type="submit">Calculer</button>
+        <button type="button" class="secondary" onclick="window.print()">
+          Exporter en PDF
+        </button>
+      </div>
+
+      <div id="error" class="error"></div>
+    </form>
+  </div>
+
+  <!-- RÉSULTATS -->
+  <div class="card" id="resultsCard" style="display:none;">
+    <h2>Résultats – Plan de débit panneaux 2D</h2>
+    <div id="summary"></div>
+
+    <div id="cutListDetailed"></div>
+
+    <h3>Calepinage des panneaux</h3>
+    <p class="muted">
+      Chaque bande représente un panneau brut. Les rectangles représentent les pièces placées,
+      avec leur numéro (#N) et leur nom. L'ordre de placement peut servir de guide de découpe.
+    </p>
+    <div class="drawing-wrapper">
+      <svg id="boardsSvg" class="boards-layout-svg" preserveAspectRatio="xMidYMid meet"></svg>
+    </div>
+
+    <div id="optimization"></div>
+  </div>
+
+  <script src="calpinage.js" defer></script>
+</body>
+</html>
