@@ -2,7 +2,7 @@
 <html lang="fr">
 <head>
   <meta charset="UTF-8">
-  <title>Plan de débit panneaux 2D – optimisation type MaxCut</title>
+  <title>Plan de débit panneaux 2D – optimisation</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
 
   <link rel="stylesheet" href="style.css">
@@ -11,7 +11,7 @@
 
   <!-- FORMULAIRE -->
   <div class="card" id="formCard">
-    <h1>Plan de débit panneaux 2D – Optimisation type MaxCut</h1>
+    <h1>Plan de débit panneaux 2D – Optimisation</h1>
     <p class="muted">
       Saisis tes pièces de panneaux (longueur × largeur, quantité) et les dimensions de tes panneaux bruts
       (par ex. 2800 × 2070 mm). L'application calcule un calepinage 2D simplifié pour limiter les chutes,
@@ -22,7 +22,7 @@
 
       <h2>Pièces de panneaux à découper</h2>
       <p class="muted">
-        Chaque ligne correspond à une pièce de panneau (montant, côté, étagère, façade, etc.).
+        Chaque ligne correspond à une pièce de panneau (côté, étagère, façade, etc.).
         Les longueurs et largeurs sont en millimètres.
       </p>
 
@@ -31,7 +31,14 @@
         <div class="piece-row">
           <div class="piece-header">
             <span class="piece-title">Pièce 1</span>
-            <button type="button" class="piece-remove-btn">Supprimer</button>
+            <button
+              type="button"
+              class="piece-remove-btn"
+              aria-label="Supprimer la pièce"
+              title="Supprimer la pièce"
+            >
+              🗑️
+            </button>
           </div>
           <div class="grid piece-grid">
             <div>
@@ -82,8 +89,8 @@
       </div>
 
       <p class="muted">
-        Hypothèse : les pièces ne sont <strong>pas</strong> tournées (longueur de la pièce alignée sur la longueur du panneau).
-        On pourra ajouter une option "rotation autorisée" plus tard si tu veux.
+        Les pièces peuvent être tournées de <strong>90°</strong> si cela permet de mieux remplir le panneau
+        (l'orientation est choisie automatiquement).
       </p>
 
       <div class="actions">
@@ -107,7 +114,7 @@
     <h3>Calepinage des panneaux</h3>
     <p class="muted">
       Chaque bande représente un panneau brut. Les rectangles représentent les pièces placées,
-      avec leur numéro (#N) et leur nom. L'ordre de placement peut servir de guide de découpe.
+      avec leur numéro (#N). L'ordre de placement peut servir de guide de découpe.
     </p>
     <div class="drawing-wrapper">
       <svg id="boardsSvg" class="boards-layout-svg" preserveAspectRatio="xMidYMid meet"></svg>
