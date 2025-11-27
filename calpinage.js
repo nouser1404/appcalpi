@@ -5,142 +5,141 @@ function round2(x) {
 // Optimisation 2D avec rotation possible (90°)
 // On remplit le panneau par "bandes" horizontales (shelves).
 // Les pièces peuvent être placées en orientation normale ou tournée.
+// Optimisation 2D avec rotation possible (90°) et "best fit"
+// On remplit les panneaux par bandes (shelves), mais pour chaque pièce
+// on choisit le meilleur placement parmi tous les panneaux / étagères possibles.
 function optimizePanels2D(pieces, stockWidth, stockLength) {
   // pieces = [{id, label, length, width}]
-  // On trie par dimension max décroissante (placer les gros d'abord)
   const sorted = pieces.slice().sort((a, b) => {
     const aMax = Math.max(a.length, a.width);
     const bMax = Math.max(b.length, b.width);
-    return bMax - aMax;
+    return bMax - aMax; // gros morceaux d'abord
   });
 
   const panels = []; // { shelves: [{y, height, usedWidth}], usedHeight, pieces: [...] }
 
   sorted.forEach(p => {
-    let placed = false;
-
     // Deux orientations possibles
     const orientations = [
       { length: p.length, width: p.width, rotated: false },
       { length: p.width,  width: p.length, rotated: true }
     ];
 
-    // Essayer de placer dans les panneaux existants
-    for (const panel of panels) {
-      if (placed) break;
+    let bestPlacement = null;
 
-      // 1) sur une étagère existante
-      for (const shelf of panel.shelves) {
-        if (placed) break;
-
-        for (const o of orientations) {
-          if (
-            o.length <= shelf.height &&
-            shelf.usedWidth + o.width <= stockWidth
-          ) {
-            const placement = {
-              id: p.id,
-              label: p.label,
-              length: o.length,
-              width: o.width,
-              rotated: o.rotated,
-              panelIndex: panels.indexOf(panel),
-              x: shelf.usedWidth,
-              y: shelf.y
-            };
-            panel.pieces.push(placement);
-            shelf.usedWidth += o.width;
-            placed = true;
-            break;
-          }
-        }
-      }
-
-      if (placed) break;
-
-      // 2) créer une nouvelle étagère dans ce panneau
+    // 1) Essayer de placer dans tous les panneaux existants
+    panels.forEach((panel, panelIndex) => {
       const remainingHeight = stockLength - panel.usedHeight;
-      const sortedOrientations = orientations
-        .slice()
-        .sort((o1, o2) => o1.length - o2.length); // on préfère les plus courtes
 
-      for (const o of sortedOrientations) {
-        if (o.length <= remainingHeight && o.width <= stockWidth) {
-          const shelf = {
-            y: panel.usedHeight,
-            height: o.length,
-            usedWidth: o.width
-          };
-          panel.shelves.push(shelf);
-          panel.usedHeight += o.length;
+      // a) Sur toutes les étagères existantes
+      panel.shelves.forEach((shelf, shelfIndex) => {
+        orientations.forEach(o => {
+          if (o.length <= shelf.height && shelf.usedWidth + o.width <= stockWidth) {
+            const leftoverWidth = stockWidth - (shelf.usedWidth + o.width);
+            const cost = leftoverWidth; // on minimise la largeur perdue sur l'étagère
 
-          const placement = {
-            id: p.id,
-            label: p.label,
-            length: o.length,
-            width: o.width,
-            rotated: o.rotated,
-            panelIndex: panels.indexOf(panel),
+            if (!bestPlacement || cost < bestPlacement.cost) {
+              bestPlacement = {
+                panelIndex,
+                type: "existing-shelf",
+                shelfIndex,
+                orientation: o,
+                x: shelf.usedWidth,
+                y: shelf.y,
+                cost
+              };
+            }
+          }
+        });
+      });
+
+      // b) Créer une nouvelle étagère dans ce panneau
+      if (remainingHeight > 0) {
+        orientations.forEach(o => {
+          if (o.length <= remainingHeight && o.width <= stockWidth) {
+            const leftoverHeight = remainingHeight - o.length;
+            const cost = leftoverHeight; // on minimise la hauteur perdue dans le panneau
+
+            if (!bestPlacement || cost < bestPlacement.cost) {
+              bestPlacement = {
+                panelIndex,
+                type: "new-shelf",
+                shelfIndex: panel.shelves.length,
+                orientation: o,
+                x: 0,
+                y: panel.usedHeight,
+                cost
+              };
+            }
+          }
+        });
+      }
+    });
+
+    // 2) Essayer un nouveau panneau
+    orientations.forEach(o => {
+      if (o.length <= stockLength && o.width <= stockWidth) {
+        const leftoverHeight = stockLength - o.length;
+        const cost = leftoverHeight + 100000; 
+        // on pénalise un peu l'ouverture d'un nouveau panneau
+
+        if (!bestPlacement || cost < bestPlacement.cost) {
+          bestPlacement = {
+            panelIndex: panels.length, // nouveau panneau
+            type: "new-panel",
+            shelfIndex: 0,
+            orientation: o,
             x: 0,
-            y: shelf.y
+            y: 0,
+            cost
           };
-          panel.pieces.push(placement);
-          placed = true;
-          break;
         }
       }
+    });
+
+    if (!bestPlacement) {
+      // Normalement impossible si on a filtré les pièces trop grandes en amont
+      throw new Error("Impossible de placer une pièce (même dans un panneau neuf).");
     }
 
-    // Si aucune place trouvée, on crée un nouveau panneau
-    if (!placed) {
-      const newPanel = {
+    // Appliquer le best placement
+    let panel;
+    if (bestPlacement.type === "new-panel") {
+      panel = {
         shelves: [],
         usedHeight: 0,
         pieces: []
       };
-
-      const orientations = [
-        { length: p.length, width: p.width, rotated: false },
-        { length: p.width,  width: p.length, rotated: true }
-      ];
-      const sortedOrientations = orientations
-        .slice()
-        .sort((o1, o2) => o1.length - o2.length);
-
-      let placedInNew = false;
-      for (const o of sortedOrientations) {
-        if (o.length <= stockLength && o.width <= stockWidth) {
-          const shelf = {
-            y: 0,
-            height: o.length,
-            usedWidth: o.width
-          };
-          newPanel.shelves.push(shelf);
-          newPanel.usedHeight = o.length;
-
-          const placement = {
-            id: p.id,
-            label: p.label,
-            length: o.length,
-            width: o.width,
-            rotated: o.rotated,
-            panelIndex: panels.length,
-            x: 0,
-            y: 0
-          };
-          newPanel.pieces.push(placement);
-
-          panels.push(newPanel);
-          placedInNew = true;
-          break;
-        }
-      }
-
-      if (!placedInNew) {
-        // Ne devrait pas arriver, car on filtre déjà plus haut
-        throw new Error("Impossible de placer une pièce dans un nouveau panneau.");
-      }
+      panels.push(panel);
+    } else {
+      panel = panels[bestPlacement.panelIndex];
     }
+
+    if (bestPlacement.type === "new-shelf" || bestPlacement.type === "new-panel") {
+      // On crée la nouvelle étagère
+      const shelf = {
+        y: bestPlacement.y,
+        height: bestPlacement.orientation.length,
+        usedWidth: bestPlacement.orientation.width
+      };
+      panel.shelves.push(shelf);
+      panel.usedHeight = shelf.y + shelf.height;
+    } else if (bestPlacement.type === "existing-shelf") {
+      const shelf = panel.shelves[bestPlacement.shelfIndex];
+      shelf.usedWidth += bestPlacement.orientation.width;
+    }
+
+    const placement = {
+      id: p.id,
+      label: p.label,
+      length: bestPlacement.orientation.length,
+      width: bestPlacement.orientation.width,
+      rotated: bestPlacement.orientation.rotated,
+      panelIndex: bestPlacement.panelIndex,
+      x: bestPlacement.x,
+      y: bestPlacement.y
+    };
+    panel.pieces.push(placement);
   });
 
   return panels;
