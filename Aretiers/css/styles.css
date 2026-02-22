@@ -97,6 +97,10 @@ input{
   background: rgba(255,255,255,.03);
   border:1px solid var(--stroke);
   border-radius:14px;
+  cursor: grab;
+}
+.canvas-wrap canvas:active{
+  cursor: grabbing;
 }
 
 .canvas-tooltip{

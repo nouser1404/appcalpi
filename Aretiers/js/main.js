@@ -1,6 +1,6 @@
 // js/main.js
 import { computeModel } from "./geometry.js";
-import { draw, projectIso } from "./render.js";
+import { draw, projectIso, rotateZ } from "./render.js";
 import { renderSummary, renderTable, renderDetails, formatDeg, formatMm } from "./ui.js";
 import {
   buildTriangleTemplate2D,
@@ -40,6 +40,10 @@ const ctx = els.canvas.getContext("2d");
 let hoverIndex = null;
 let lastModel = null;
 let lastParams = null;
+let viewAngle = 0;
+let isDragging = false;
+let dragStartX = 0;
+let dragStartAngle = 0;
 
 function readParams() {
   const n = Math.max(3, parseInt(els.n.value, 10) || 3);
@@ -85,7 +89,7 @@ function recalc() {
   renderSummary(els.summary, model, p);
   renderTable(els.tbody, model, els.showToolAngle.checked);
   renderDetails(els.details, p);
-  draw(ctx, model, hoverIndex, p.epaisseur || 0);
+  draw(ctx, model, hoverIndex, p.epaisseur || 0, viewAngle);
 }
 
 els.recalc.addEventListener("click", recalc);
@@ -98,7 +102,7 @@ els.tbody.addEventListener("mousemove", (e) => {
   const tr = e.target.closest("tr");
   if (!tr) return;
   hoverIndex = Number(tr.dataset.index);
-  draw(ctx, lastModel, hoverIndex, lastParams?.epaisseur || 0);
+  draw(ctx, lastModel, hoverIndex, lastParams?.epaisseur || 0, viewAngle);
 
   // si on préfère la face survolée, on met à jour le select
   if (els.faceIndex && els.preferHoveredFace?.checked) {
@@ -108,7 +112,7 @@ els.tbody.addEventListener("mousemove", (e) => {
 
 els.tbody.addEventListener("mouseleave", () => {
   hoverIndex = null;
-  draw(ctx, lastModel, hoverIndex, lastParams?.epaisseur || 0);
+  draw(ctx, lastModel, hoverIndex, lastParams?.epaisseur || 0, viewAngle);
 });
 
 // --- Survol du canvas : infobulle longueur / dièdre / biseau ---
@@ -163,43 +167,44 @@ function hideCanvasTooltip() {
   }
 }
 
+els.canvas.addEventListener("mousedown", (e) => {
+  if (e.button !== 0) return;
+  isDragging = true;
+  dragStartX = e.clientX;
+  dragStartAngle = viewAngle;
+  els.canvas.style.cursor = "grabbing";
+});
+
 els.canvas.addEventListener("mousemove", (e) => {
   if (!lastModel) return;
+  if (isDragging) {
+    viewAngle = dragStartAngle + (e.clientX - dragStartX) * 0.008;
+    hideCanvasTooltip();
+    draw(ctx, lastModel, hoverIndex, lastParams?.epaisseur || 0, viewAngle);
+    return;
+  }
   const { base, trunc, trunc2, A } = lastModel;
   const { mx, my } = getCanvasCoords(e);
   const cx = els.canvas.width * 0.5;
   const cy = els.canvas.height * 0.62;
-  const maxR = Math.max(...base.map(v => {
-    const d = Math.hypot(v.x, v.y, v.z);
-    return d;
-  })) || 1;
+  const maxR = Math.max(...base.map(v => Math.hypot(v.x, v.y, v.z))) || 1;
   const s = Math.min(els.canvas.width, els.canvas.height) / (maxR * 4.2);
   const px = (mx - cx) / s;
   const py = (my - cy) / s;
 
+  const proj = (p) => projectIso(rotateZ(p, viewAngle));
   let bestI = null;
   let bestD = TOOLTIP_DIST_THRESHOLD;
 
   for (let i = 0; i < base.length; i++) {
     let from = base[i];
     const segs = [];
-    if (trunc) {
-      segs.push([from, trunc[i]]);
-      from = trunc[i];
-    }
-    if (trunc2) {
-      segs.push([from, trunc2[i]]);
-      from = trunc2[i];
-    }
+    if (trunc) { segs.push([from, trunc[i]]); from = trunc[i]; }
+    if (trunc2) { segs.push([from, trunc2[i]]); from = trunc2[i]; }
     segs.push([from, A]);
     for (const [a, b] of segs) {
-      const p1 = projectIso(a);
-      const p2 = projectIso(b);
-      const d = distPointToSegment(px, py, p1.x, p1.y, p2.x, p2.y);
-      if (d < bestD) {
-        bestD = d;
-        bestI = i;
-      }
+      const d = distPointToSegment(px, py, proj(a).x, proj(a).y, proj(b).x, proj(b).y);
+      if (d < bestD) { bestD = d; bestI = i; }
     }
   }
 
@@ -210,13 +215,21 @@ els.canvas.addEventListener("mousemove", (e) => {
     hoverIndex = null;
     hideCanvasTooltip();
   }
-  draw(ctx, lastModel, hoverIndex, lastParams?.epaisseur || 0);
+  draw(ctx, lastModel, hoverIndex, lastParams?.epaisseur || 0, viewAngle);
+});
+
+els.canvas.addEventListener("mouseup", (e) => {
+  if (e.button !== 0) return;
+  isDragging = false;
+  els.canvas.style.cursor = "";
 });
 
 els.canvas.addEventListener("mouseleave", () => {
+  isDragging = false;
+  els.canvas.style.cursor = "";
   hideCanvasTooltip();
   hoverIndex = null;
-  draw(ctx, lastModel, hoverIndex, lastParams?.epaisseur || 0);
+  draw(ctx, lastModel, hoverIndex, lastParams?.epaisseur || 0, viewAngle);
 });
 
 function getActiveFaceIndex() {
@@ -271,8 +284,8 @@ els.exportAllSvg?.addEventListener("click", exportAllSVG);
 // au changement du select, on force un redraw (optionnel)
 els.faceIndex?.addEventListener("change", () => {
   const idx = Number(els.faceIndex.value || 0);
-  hoverIndex = idx; // petit confort: surligne la face sélectionnée
-  draw(ctx, lastModel, hoverIndex, lastParams?.epaisseur || 0);
+  hoverIndex = idx;
+  draw(ctx, lastModel, hoverIndex, lastParams?.epaisseur || 0, viewAngle);
 });
 
 recalc();
