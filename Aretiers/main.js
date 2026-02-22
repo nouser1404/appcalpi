@@ -1,7 +1,7 @@
 // js/main.js
 import { computeModel } from "./geometry.js";
-import { draw } from "./render.js";
-import { renderSummary, renderTable, renderDetails } from "./ui.js";
+import { draw, projectIso } from "./render.js";
+import { renderSummary, renderTable, renderDetails, formatDeg, formatMm } from "./ui.js";
 import {
   buildTriangleTemplate2D,
   buildFrustumTemplate2D,
@@ -21,6 +21,7 @@ const els = {
   showToolAngle: document.getElementById("showToolAngle"),
   recalc: document.getElementById("recalc"),
   canvas: document.getElementById("view"),
+  canvasTooltip: document.getElementById("canvasTooltip"),
   summary: document.getElementById("summary"),
   tbody: document.querySelector("#results tbody"),
   details: document.getElementById("details"),
@@ -106,6 +107,114 @@ els.tbody.addEventListener("mousemove", (e) => {
 });
 
 els.tbody.addEventListener("mouseleave", () => {
+  hoverIndex = null;
+  draw(ctx, lastModel, hoverIndex, lastParams?.epaisseur || 0);
+});
+
+// --- Survol du canvas : infobulle longueur / dièdre / biseau ---
+const TOOLTIP_DIST_THRESHOLD = 0.35; // en unités projetées (sensibilité au survol)
+
+function distPointToSegment(px, py, x1, y1, x2, y2) {
+  const vx = x2 - x1, vy = y2 - y1;
+  const wx = px - x1, wy = py - y1;
+  const d2 = vx * vx + vy * vy || 1e-12;
+  let t = (wx * vx + wy * vy) / d2;
+  t = Math.max(0, Math.min(1, t));
+  const cx = x1 + t * vx, cy = y1 + t * vy;
+  return Math.hypot(px - cx, py - cy);
+}
+
+function getCanvasCoords(e) {
+  const canvas = els.canvas;
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = canvas.width / rect.width;
+  const scaleY = canvas.height / rect.height;
+  return {
+    mx: (e.clientX - rect.left) * scaleX,
+    my: (e.clientY - rect.top) * scaleY
+  };
+}
+
+function showCanvasTooltip(aretierIndex, clientX, clientY) {
+  const tip = els.canvasTooltip;
+  if (!tip || !lastModel) return;
+  const it = lastModel.items[aretierIndex];
+  if (!it) return;
+  tip.innerHTML = `<strong>Arêtier ${aretierIndex}</strong>\nLongueur : ${formatMm(it.L)}\nDièdre δ : ${formatDeg(it.delta)}\nBiseau (δ/2) : ${formatDeg(it.bevelFace)}\nRéglage outil : ${formatDeg(it.bevelTool)}`;
+  tip.setAttribute("aria-hidden", "false");
+  const offset = 14;
+  let left = clientX + offset;
+  let top = clientY + offset;
+  const pad = 8;
+  const maxLeft = window.innerWidth - tip.offsetWidth - pad;
+  const maxTop = window.innerHeight - tip.offsetHeight - pad;
+  if (left > maxLeft) left = clientX - tip.offsetWidth - offset;
+  if (top > maxTop) top = maxTop;
+  if (left < pad) left = pad;
+  if (top < pad) top = pad;
+  tip.style.left = `${left}px`;
+  tip.style.top = `${top}px`;
+}
+
+function hideCanvasTooltip() {
+  const tip = els.canvasTooltip;
+  if (tip) {
+    tip.setAttribute("aria-hidden", "true");
+  }
+}
+
+els.canvas.addEventListener("mousemove", (e) => {
+  if (!lastModel) return;
+  const { base, trunc, trunc2, A } = lastModel;
+  const { mx, my } = getCanvasCoords(e);
+  const cx = els.canvas.width * 0.5;
+  const cy = els.canvas.height * 0.62;
+  const maxR = Math.max(...base.map(v => {
+    const d = Math.hypot(v.x, v.y, v.z);
+    return d;
+  })) || 1;
+  const s = Math.min(els.canvas.width, els.canvas.height) / (maxR * 4.2);
+  const px = (mx - cx) / s;
+  const py = (my - cy) / s;
+
+  let bestI = null;
+  let bestD = TOOLTIP_DIST_THRESHOLD;
+
+  for (let i = 0; i < base.length; i++) {
+    let from = base[i];
+    const segs = [];
+    if (trunc) {
+      segs.push([from, trunc[i]]);
+      from = trunc[i];
+    }
+    if (trunc2) {
+      segs.push([from, trunc2[i]]);
+      from = trunc2[i];
+    }
+    segs.push([from, A]);
+    for (const [a, b] of segs) {
+      const p1 = projectIso(a);
+      const p2 = projectIso(b);
+      const d = distPointToSegment(px, py, p1.x, p1.y, p2.x, p2.y);
+      if (d < bestD) {
+        bestD = d;
+        bestI = i;
+      }
+    }
+  }
+
+  if (bestI !== null) {
+    hoverIndex = bestI;
+    showCanvasTooltip(bestI, e.clientX, e.clientY);
+  } else {
+    hoverIndex = null;
+    hideCanvasTooltip();
+  }
+  draw(ctx, lastModel, hoverIndex, lastParams?.epaisseur || 0);
+});
+
+els.canvas.addEventListener("mouseleave", () => {
+  hideCanvasTooltip();
   hoverIndex = null;
   draw(ctx, lastModel, hoverIndex, lastParams?.epaisseur || 0);
 });

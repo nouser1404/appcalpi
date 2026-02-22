@@ -98,8 +98,11 @@
 
     <section class="card">
       <h2>Rendu</h2>
-      <canvas id="view" width="820" height="520"></canvas>
-      <p class="hint">Survole une ligne du tableau pour surligner l’arêtier correspondant.</p>
+      <div class="canvas-wrap">
+        <canvas id="view" width="820" height="520"></canvas>
+        <div id="canvasTooltip" class="canvas-tooltip" role="tooltip" aria-hidden="true"></div>
+      </div>
+      <p class="hint">Survole une arête sur le rendu ou une ligne du tableau pour voir les cotes et surligner l’arêtier .</p>
     </section>
 
     <section class="card wide">

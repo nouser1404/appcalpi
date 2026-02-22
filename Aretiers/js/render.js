@@ -1,6 +1,7 @@
 import { sub, norm, vec } from "./geometry.js";
 
-function projectIso(p){
+/** Projection isométrique 3D → 2D (exportée pour hit-test survol). */
+export function projectIso(p){
   const x = p.x - p.y;
   const y = (p.x + p.y)*0.5 - p.z;
   return {x,y};
