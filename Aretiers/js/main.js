@@ -14,6 +14,8 @@ const els = {
   R: document.getElementById("R"),
   H: document.getElementById("H"),
   zCut: document.getElementById("zCut"),
+  zCut2: document.getElementById("zCut2"),
+  epaisseur: document.getElementById("epaisseur"),
   dx: document.getElementById("dx"),
   dy: document.getElementById("dy"),
   showToolAngle: document.getElementById("showToolAngle"),
@@ -43,11 +45,15 @@ function readParams() {
   const R = Math.max(0, Number(els.R.value) || 0);
   const H = Math.max(0, Number(els.H.value) || 0);
   let zCut = Number(els.zCut.value) || 0;
+  let zCut2 = Number(els.zCut2.value);
+  if (Number.isNaN(zCut2)) zCut2 = zCut;
+  const epaisseur = Math.max(0, Number(els.epaisseur?.value) || 0);
   const dx = Number(els.dx.value) || 0;
   const dy = Number(els.dy.value) || 0;
 
   zCut = Math.max(0, Math.min(H, zCut));
-  return { n, R, H, zCut, dx, dy };
+  zCut2 = Math.max(0, Math.min(H, zCut2));
+  return { n, R, H, zCut, zCut2, epaisseur, dx, dy };
 }
 
 function syncFaceSelect(n) {
@@ -78,12 +84,12 @@ function recalc() {
   renderSummary(els.summary, model, p);
   renderTable(els.tbody, model, els.showToolAngle.checked);
   renderDetails(els.details, p);
-  draw(ctx, model, hoverIndex);
+  draw(ctx, model, hoverIndex, p.epaisseur || 0);
 }
 
 els.recalc.addEventListener("click", recalc);
-[els.n, els.R, els.H, els.zCut, els.dx, els.dy, els.showToolAngle].forEach(inp => {
-  inp.addEventListener("input", recalc);
+[els.n, els.R, els.H, els.zCut, els.zCut2, els.epaisseur, els.dx, els.dy, els.showToolAngle].forEach(inp => {
+  if (inp) inp.addEventListener("input", recalc);
 });
 
 // Hover table -> highlight edge
@@ -91,7 +97,7 @@ els.tbody.addEventListener("mousemove", (e) => {
   const tr = e.target.closest("tr");
   if (!tr) return;
   hoverIndex = Number(tr.dataset.index);
-  draw(ctx, lastModel, hoverIndex);
+  draw(ctx, lastModel, hoverIndex, lastParams?.epaisseur || 0);
 
   // si on préfère la face survolée, on met à jour le select
   if (els.faceIndex && els.preferHoveredFace?.checked) {
@@ -101,7 +107,7 @@ els.tbody.addEventListener("mousemove", (e) => {
 
 els.tbody.addEventListener("mouseleave", () => {
   hoverIndex = null;
-  draw(ctx, lastModel, hoverIndex);
+  draw(ctx, lastModel, hoverIndex, lastParams?.epaisseur || 0);
 });
 
 function getActiveFaceIndex() {
@@ -157,7 +163,7 @@ els.exportAllSvg?.addEventListener("click", exportAllSVG);
 els.faceIndex?.addEventListener("change", () => {
   const idx = Number(els.faceIndex.value || 0);
   hoverIndex = idx; // petit confort: surligne la face sélectionnée
-  draw(ctx, lastModel, hoverIndex);
+  draw(ctx, lastModel, hoverIndex, lastParams?.epaisseur || 0);
 });
 
 recalc();

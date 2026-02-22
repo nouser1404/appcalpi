@@ -3,16 +3,29 @@ import { rad2deg } from "./geometry.js";
 export function formatDeg(r){ return `${rad2deg(r).toFixed(2)}°`; }
 export function formatMm(v){ return `${v.toFixed(1)} mm`; }
 
-export function renderSummary(el, model, {n,R,H,zCut,dx,dy}){
-  el.innerHTML = `
-    <span class="badge">n = ${n}</span>
-    <span class="badge">R = ${formatMm(R)}</span>
-    <span class="badge">H = ${formatMm(H)}</span>
-    <span class="badge">D = ${formatMm(model.diameter)}</span>
-    <span class="badge">arête base = ${formatMm(model.baseEdge)}</span>
-    <span class="badge">dx,dy = ${formatMm(dx)}, ${formatMm(dy)}</span>
-    <span class="badge">zCut = ${formatMm(zCut)}</span>
-  `;
+export function renderSummary(el, model, {n,R,H,zCut,zCut2,epaisseur,dx,dy}){
+  const badges = [
+    `<span class="badge">n = ${n}</span>`,
+    `<span class="badge">R = ${formatMm(R)}</span>`,
+    `<span class="badge">H = ${formatMm(H)}</span>`,
+    `<span class="badge">D = ${formatMm(model.diameter)}</span>`,
+    `<span class="badge">arête base = ${formatMm(model.baseEdge)}</span>`,
+    `<span class="badge">dx,dy = ${formatMm(dx)}, ${formatMm(dy)}</span>`,
+    `<span class="badge">zCut = ${formatMm(zCut)}</span>`,
+  ];
+  if (zCut2 != null && zCut2 !== zCut) {
+    badges.push(`<span class="badge">zCut2 = ${formatMm(zCut2)}</span>`);
+  }
+  if (model.radiusTrunc != null) {
+    badges.push(`<span class="badge">rayon tronc. 1 = ${formatMm(model.radiusTrunc)}</span>`);
+  }
+  if (model.radiusTrunc2 != null) {
+    badges.push(`<span class="badge">rayon tronc. 2 = ${formatMm(model.radiusTrunc2)}</span>`);
+  }
+  if (epaisseur != null && epaisseur > 0) {
+    badges.push(`<span class="badge">épaisseur = ${formatMm(epaisseur)}</span>`);
+  }
+  el.innerHTML = badges.join("");
 }
 
 export function renderTable(tbody, model, showToolAngle){
@@ -53,8 +66,9 @@ export function renderDetails(pre, params){
    biseau par face = δi/2
    réglage outil   = 90° - δi/2
 
-Tronquage (plan z=zCut):
+Tronquage (plans z=zCut, z=zCut2):
    Ti = A + t (Vi - A) avec t = (zCut - Az)/(Viz - Az)
+   Rayon troncature = distance centre (dx,dy,z) → sommet du polygone.
 
 Paramètres actuels:
 ${JSON.stringify(params, null, 2)}

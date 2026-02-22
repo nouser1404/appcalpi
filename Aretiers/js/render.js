@@ -1,4 +1,4 @@
-import { sub, norm } from "./geometry.js";
+import { sub, norm, mul, vec } from "./geometry.js";
 
 function projectIso(p){
   // projection isométrique simple
@@ -7,8 +7,21 @@ function projectIso(p){
   return {x,y};
 }
 
-export function draw(ctx, model, hoverIndex){
-  const {A, base, trunc} = model;
+/** Retourne les sommets d'un polygone "intérieur" en reculant de epaisseur vers le centre. */
+function innerPolygon(vertices, center, radius, epaisseur) {
+  if (epaisseur <= 0 || radius <= 1e-6) return vertices;
+  const f = 1 - epaisseur / radius;
+  if (f <= 0) return vertices;
+  return vertices.map(v => ({
+    x: center.x + (v.x - center.x) * f,
+    y: center.y + (v.y - center.y) * f,
+    z: center.z + (v.z - center.z) * f
+  }));
+}
+
+export function draw(ctx, model, hoverIndex, epaisseur = 0){
+  const {A, base, trunc, trunc2, radiusTrunc, radiusTrunc2, centerTrunc, centerTrunc2} = model;
+  const R = norm(base[0] ? sub(base[0], {x:0,y:0,z:0}) : 1);
 
   // clear
   ctx.clearRect(0,0,ctx.canvas.width, ctx.canvas.height);
@@ -22,12 +35,31 @@ export function draw(ctx, model, hoverIndex){
   const s = Math.min(ctx.canvas.width, ctx.canvas.height) / (maxR*4.2);
   ctx.scale(s,s);
 
-  // draw base polygon
-  poly(ctx, base.map(projectIso), "rgba(255,255,255,.22)", "rgba(255,255,255,.12)", 2);
+  const centerBase = vec(0,0,0);
 
-  // draw trunc polygon if exists
+  // base: contour extérieur puis intérieur (épaisseur)
+  poly(ctx, base.map(projectIso), "rgba(255,255,255,.22)", "rgba(255,255,255,.12)", 2);
+  if (epaisseur > 0 && R > epaisseur) {
+    const baseInner = innerPolygon(base, centerBase, R, epaisseur);
+    poly(ctx, baseInner.map(projectIso), "rgba(255,255,255,.08)", "rgba(110,231,255,.12)", 1.5);
+  }
+
+  // première troncature
   if(trunc){
     poly(ctx, trunc.map(projectIso), "rgba(110,231,255,.30)", "rgba(110,231,255,.14)", 2);
+    if (epaisseur > 0 && centerTrunc && radiusTrunc > epaisseur) {
+      const truncInner = innerPolygon(trunc, centerTrunc, radiusTrunc, epaisseur);
+      poly(ctx, truncInner.map(projectIso), "rgba(110,231,255,.12)", "rgba(110,231,255,.08)", 1.5);
+    }
+  }
+
+  // deuxième troncature
+  if(trunc2){
+    poly(ctx, trunc2.map(projectIso), "rgba(167,139,250,.35)", "rgba(167,139,250,.18)", 2);
+    if (epaisseur > 0 && centerTrunc2 && radiusTrunc2 > epaisseur) {
+      const trunc2Inner = innerPolygon(trunc2, centerTrunc2, radiusTrunc2, epaisseur);
+      poly(ctx, trunc2Inner.map(projectIso), "rgba(167,139,250,.14)", "rgba(167,139,250,.10)", 1.5);
+    }
   }
 
   // draw edges A->Vi

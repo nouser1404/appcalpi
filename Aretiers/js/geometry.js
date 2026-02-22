@@ -41,14 +41,28 @@ export function intersectSegmentWithZ(A, V, zCut){
   return add(A, mul(sub(V,A), t));
 }
 
-export function computeModel({n,R,H,dx,dy,zCut}){
+export function truncationRadius(center, truncPoint) {
+  return norm(sub(truncPoint, center));
+}
+
+export function computeModel({n,R,H,dx,dy,zCut,zCut2}){
   const A = vec(dx,dy,H);
   const base = buildBaseVertices(n,R);
 
-  // optional truncation points
+  // Première troncature (plan z = zCut)
   const trunc = (zCut > 0 && zCut < H)
     ? base.map(Vi => intersectSegmentWithZ(A, Vi, zCut))
     : null;
+  const centerTrunc = trunc ? vec(dx, dy, zCut) : null;
+  const radiusTrunc = trunc && centerTrunc ? truncationRadius(centerTrunc, trunc[0]) : null;
+
+  // Deuxième troncature (plan z = zCut2), si différente de zCut
+  const z2 = zCut2 ?? zCut;
+  const trunc2 = (z2 > 0 && z2 < H && Math.abs(z2 - zCut) > 1e-6)
+    ? base.map(Vi => intersectSegmentWithZ(A, Vi, z2))
+    : null;
+  const centerTrunc2 = trunc2 ? vec(dx, dy, z2) : null;
+  const radiusTrunc2 = trunc2 && centerTrunc2 ? truncationRadius(centerTrunc2, trunc2[0]) : null;
 
   // compute dihedral per arêtier at Vi between faces (A,V(i-1),Vi) and (A,Vi,V(i+1))
   const items = [];
@@ -77,7 +91,8 @@ export function computeModel({n,R,H,dx,dy,zCut}){
 
   const baseEdge = 2*R*Math.sin(Math.PI/n);
   return {
-    A, base, trunc,
+    A, base, trunc, trunc2,
+    centerTrunc, radiusTrunc, centerTrunc2, radiusTrunc2,
     baseEdge,
     diameter: 2*R,
     items
