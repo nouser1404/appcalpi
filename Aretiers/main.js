@@ -1,6 +1,6 @@
 // js/main.js
 import { computeModel } from "./geometry.js";
-import { draw, projectIso, rotateZ } from "./render.js";
+import { draw, projectIso, rotateZ, rotateX } from "./render.js";
 import { renderSummary, renderTable, renderDetails, formatDeg, formatMm } from "./ui.js";
 import {
   buildTriangleTemplate2D,
@@ -38,12 +38,19 @@ const els = {
 
 const ctx = els.canvas.getContext("2d");
 let hoverIndex = null;
+let hoverFaceIndex = null;
+let hoverSection = null;
 let lastModel = null;
 let lastParams = null;
 let viewAngle = 0;
+let viewElevation = 0;
+const VIEW_ELEVATION_MIN = -Math.PI / 2 + 0.08;
+const VIEW_ELEVATION_MAX = Math.PI / 2 - 0.08;
 let isDragging = false;
 let dragStartX = 0;
+let dragStartY = 0;
 let dragStartAngle = 0;
+let dragStartElevation = 0;
 
 function readParams() {
   const n = Math.max(3, parseInt(els.n.value, 10) || 3);
@@ -89,7 +96,7 @@ function recalc() {
   renderSummary(els.summary, model, p);
   renderTable(els.tbody, model, els.showToolAngle.checked);
   renderDetails(els.details, p);
-  draw(ctx, model, hoverIndex, p.epaisseur || 0, viewAngle);
+  draw(ctx, model, hoverIndex, p.epaisseur || 0, viewAngle, viewElevation, hoverFaceIndex, hoverSection);
 }
 
 els.recalc.addEventListener("click", recalc);
@@ -102,7 +109,7 @@ els.tbody.addEventListener("mousemove", (e) => {
   const tr = e.target.closest("tr");
   if (!tr) return;
   hoverIndex = Number(tr.dataset.index);
-  draw(ctx, lastModel, hoverIndex, lastParams?.epaisseur || 0, viewAngle);
+  draw(ctx, lastModel, hoverIndex, lastParams?.epaisseur || 0, viewAngle, viewElevation, hoverFaceIndex, hoverSection);
 
   // si on préfère la face survolée, on met à jour le select
   if (els.faceIndex && els.preferHoveredFace?.checked) {
@@ -112,11 +119,42 @@ els.tbody.addEventListener("mousemove", (e) => {
 
 els.tbody.addEventListener("mouseleave", () => {
   hoverIndex = null;
-  draw(ctx, lastModel, hoverIndex, lastParams?.epaisseur || 0, viewAngle);
+  draw(ctx, lastModel, hoverIndex, lastParams?.epaisseur || 0, viewAngle, viewElevation, hoverFaceIndex, hoverSection);
 });
 
-// --- Survol du canvas : infobulle longueur / dièdre / biseau ---
-const TOOLTIP_DIST_THRESHOLD = 0.35; // en unités projetées (sensibilité au survol)
+// --- Survol du canvas : arêtes, faces, bases + infobulles ---
+const TOOLTIP_DIST_THRESHOLD = 0.35;
+
+function pointInPolygon(px, py, pts) {
+  let inside = false;
+  const n = pts.length;
+  for (let i = 0, j = n - 1; i < n; j = i++) {
+    const xi = pts[i].x, yi = pts[i].y;
+    const xj = pts[j].x, yj = pts[j].y;
+    if (((yi > py) !== (yj > py)) && (px < (xj - xi) * (py - yi) / (yj - yi) + xi)) inside = !inside;
+  }
+  return inside;
+}
+
+function getFacePolygon(model, faceIndex, proj) {
+  const { base, trunc, trunc2, A } = model;
+  const n = base.length;
+  const i = (faceIndex + n) % n;
+  const j = (i + 1) % n;
+  const pts = [proj(base[i]), proj(base[j])];
+  if (trunc2) pts.push(proj(trunc2[j]), proj(trunc2[i]));
+  else if (trunc) pts.push(proj(trunc[j]), proj(trunc[i]));
+  else pts.push(proj(A));
+  return pts;
+}
+
+function getSectionPolygons(model, proj) {
+  const { base, trunc, trunc2 } = model;
+  const out = { base: base.map(proj) };
+  out.trunc = trunc ? trunc.map(proj) : null;
+  out.trunc2 = trunc2 ? trunc2.map(proj) : null;
+  return out;
+}
 
 function distPointToSegment(px, py, x1, y1, x2, y2) {
   const vx = x2 - x1, vy = y2 - y1;
@@ -139,12 +177,10 @@ function getCanvasCoords(e) {
   };
 }
 
-function showCanvasTooltip(aretierIndex, clientX, clientY) {
+function showTooltip(html, clientX, clientY) {
   const tip = els.canvasTooltip;
-  if (!tip || !lastModel) return;
-  const it = lastModel.items[aretierIndex];
-  if (!it) return;
-  tip.innerHTML = `<strong>Arêtier ${aretierIndex}</strong>\nLongueur : ${formatMm(it.L)}\nDièdre δ : ${formatDeg(it.delta)}\nBiseau (δ/2) : ${formatDeg(it.bevelFace)}\nRéglage outil : ${formatDeg(it.bevelTool)}`;
+  if (!tip) return;
+  tip.innerHTML = html;
   tip.setAttribute("aria-hidden", "false");
   const offset = 14;
   let left = clientX + offset;
@@ -160,6 +196,50 @@ function showCanvasTooltip(aretierIndex, clientX, clientY) {
   tip.style.top = `${top}px`;
 }
 
+function showAretierTooltip(aretierIndex, clientX, clientY) {
+  if (!lastModel) return;
+  const it = lastModel.items[aretierIndex];
+  if (!it) return;
+  showTooltip(
+    `<strong>Arêtier ${aretierIndex}</strong>\nLongueur : ${formatMm(it.L)}\nDièdre δ : ${formatDeg(it.delta)}\nBiseau (δ/2) : ${formatDeg(it.bevelFace)}\nRéglage outil : ${formatDeg(it.bevelTool)}`,
+    clientX, clientY
+  );
+}
+
+function showFaceTooltip(faceIndex, clientX, clientY) {
+  if (!lastModel) return;
+  const n = lastModel.base.length;
+  const i = (faceIndex + n) % n;
+  const j = (i + 1) % n;
+  const itI = lastModel.items[i];
+  const itJ = lastModel.items[j];
+  const baseEdge = lastModel.baseEdge;
+  const lines = [
+    `<strong>Face ${faceIndex}</strong>`,
+    `Arête base : ${formatMm(baseEdge)}`,
+    `Arêtier ${i} : ${formatMm(itI?.L ?? 0)} • δ = ${formatDeg(itI?.delta ?? 0)}`,
+    `Arêtier ${j} : ${formatMm(itJ?.L ?? 0)} • δ = ${formatDeg(itJ?.delta ?? 0)}`
+  ];
+  if (lastModel.trunc) {
+    const legI = itI?.L ?? 0, legJ = itJ?.L ?? 0;
+    lines.push(`Montants : ${formatMm(legI)}, ${formatMm(legJ)}`);
+  }
+  showTooltip(lines.join("\n"), clientX, clientY);
+}
+
+function showSectionTooltip(sectionId, clientX, clientY) {
+  if (!lastModel) return;
+  let html = "";
+  if (sectionId === "base") {
+    html = `<strong>Base</strong>\nRayon R : ${formatMm(lastParams?.R ?? 0)}\nDiamètre : ${formatMm(lastModel.diameter)}\nArête : ${formatMm(lastModel.baseEdge)}\nn = ${lastModel.base.length} faces`;
+  } else if (sectionId === "trunc") {
+    html = `<strong>Troncature 1</strong>\nz = ${formatMm(lastParams?.zCut ?? 0)}\nRayon : ${formatMm(lastModel.radiusTrunc ?? 0)}`;
+  } else if (sectionId === "trunc2") {
+    html = `<strong>Troncature 2</strong>\nz = ${formatMm(lastParams?.zCut2 ?? 0)}\nRayon : ${formatMm(lastModel.radiusTrunc2 ?? 0)}`;
+  }
+  if (html) showTooltip(html, clientX, clientY);
+}
+
 function hideCanvasTooltip() {
   const tip = els.canvasTooltip;
   if (tip) {
@@ -171,7 +251,9 @@ els.canvas.addEventListener("mousedown", (e) => {
   if (e.button !== 0) return;
   isDragging = true;
   dragStartX = e.clientX;
+  dragStartY = e.clientY;
   dragStartAngle = viewAngle;
+  dragStartElevation = viewElevation;
   els.canvas.style.cursor = "grabbing";
 });
 
@@ -179,8 +261,10 @@ els.canvas.addEventListener("mousemove", (e) => {
   if (!lastModel) return;
   if (isDragging) {
     viewAngle = dragStartAngle + (e.clientX - dragStartX) * 0.008;
+    viewElevation = dragStartElevation + (e.clientY - dragStartY) * 0.008;
+    viewElevation = Math.max(VIEW_ELEVATION_MIN, Math.min(VIEW_ELEVATION_MAX, viewElevation));
     hideCanvasTooltip();
-    draw(ctx, lastModel, hoverIndex, lastParams?.epaisseur || 0, viewAngle);
+    draw(ctx, lastModel, hoverIndex, lastParams?.epaisseur || 0, viewAngle, viewElevation, hoverFaceIndex, hoverSection);
     return;
   }
   const { base, trunc, trunc2, A } = lastModel;
@@ -192,7 +276,7 @@ els.canvas.addEventListener("mousemove", (e) => {
   const px = (mx - cx) / s;
   const py = (my - cy) / s;
 
-  const proj = (p) => projectIso(rotateZ(p, viewAngle));
+  const proj = (p) => projectIso(rotateX(rotateZ(p, viewAngle), viewElevation));
   let bestI = null;
   let bestD = TOOLTIP_DIST_THRESHOLD;
 
@@ -210,12 +294,41 @@ els.canvas.addEventListener("mousemove", (e) => {
 
   if (bestI !== null) {
     hoverIndex = bestI;
-    showCanvasTooltip(bestI, e.clientX, e.clientY);
+    hoverFaceIndex = null;
+    hoverSection = null;
+    showAretierTooltip(bestI, e.clientX, e.clientY);
   } else {
-    hoverIndex = null;
-    hideCanvasTooltip();
+    const sections = getSectionPolygons(lastModel, proj);
+    let foundFace = false;
+    let foundSection = null;
+    for (let f = 0; f < base.length; f++) {
+      if (pointInPolygon(px, py, getFacePolygon(lastModel, f, proj))) {
+        hoverFaceIndex = f;
+        hoverSection = null;
+        hoverIndex = null;
+        showFaceTooltip(f, e.clientX, e.clientY);
+        foundFace = true;
+        break;
+      }
+    }
+    if (!foundFace) {
+      if (pointInPolygon(px, py, sections.base)) foundSection = "base";
+      else if (sections.trunc && pointInPolygon(px, py, sections.trunc)) foundSection = "trunc";
+      else if (sections.trunc2 && pointInPolygon(px, py, sections.trunc2)) foundSection = "trunc2";
+      if (foundSection) {
+        hoverSection = foundSection;
+        hoverFaceIndex = null;
+        hoverIndex = null;
+        showSectionTooltip(foundSection, e.clientX, e.clientY);
+      } else {
+        hoverIndex = null;
+        hoverFaceIndex = null;
+        hoverSection = null;
+        hideCanvasTooltip();
+      }
+    }
   }
-  draw(ctx, lastModel, hoverIndex, lastParams?.epaisseur || 0, viewAngle);
+  draw(ctx, lastModel, hoverIndex, lastParams?.epaisseur || 0, viewAngle, viewElevation, hoverFaceIndex, hoverSection);
 });
 
 els.canvas.addEventListener("mouseup", (e) => {
@@ -229,7 +342,9 @@ els.canvas.addEventListener("mouseleave", () => {
   els.canvas.style.cursor = "";
   hideCanvasTooltip();
   hoverIndex = null;
-  draw(ctx, lastModel, hoverIndex, lastParams?.epaisseur || 0, viewAngle);
+  hoverFaceIndex = null;
+  hoverSection = null;
+  draw(ctx, lastModel, hoverIndex, lastParams?.epaisseur || 0, viewAngle, viewElevation, hoverFaceIndex, hoverSection);
 });
 
 function getActiveFaceIndex() {
@@ -285,7 +400,7 @@ els.exportAllSvg?.addEventListener("click", exportAllSVG);
 els.faceIndex?.addEventListener("change", () => {
   const idx = Number(els.faceIndex.value || 0);
   hoverIndex = idx;
-  draw(ctx, lastModel, hoverIndex, lastParams?.epaisseur || 0, viewAngle);
+  draw(ctx, lastModel, hoverIndex, lastParams?.epaisseur || 0, viewAngle, viewElevation, hoverFaceIndex, hoverSection);
 });
 
 recalc();

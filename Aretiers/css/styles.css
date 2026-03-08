@@ -116,7 +116,7 @@ input{
   pointer-events: none;
   white-space: pre-line;
   box-shadow: 0 8px 24px rgba(0,0,0,.4);
-  max-width: 260px;
+  max-width: 300px;
 }
 .canvas-tooltip[aria-hidden="true"]{ opacity: 0; visibility: hidden; transition: opacity .12s, visibility .12s; }
 .canvas-tooltip[aria-hidden="false"]{ opacity: 1; visibility: visible; }
